@@ -131,7 +131,8 @@
 
         function createFoot(material) {
             const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), material);
-            foot.position.set(0, -0.02, 0.05); 
+            // CHANGED HERE: Flipped the Z position to -0.05 so the foot points forward relative to the leg's movement
+            foot.position.set(0, -0.02, -0.05); 
             foot.castShadow = true;
             const group = new THREE.Group();
             group.add(foot);
@@ -184,12 +185,10 @@
 
             rHip.rotation.x = r.h * rad;
             rKnee.rotation.x = r.k * rad;
-            // CHANGED: Removed the negative sign to flip the ankle rotation direction
             rAnkle.rotation.x = r.a * rad;
 
             lHip.rotation.x = l.h * rad;
             lKnee.rotation.x = l.k * rad;
-            // CHANGED: Removed the negative sign to flip the ankle rotation direction
             lAnkle.rotation.x = l.a * rad;
 
             // Update UI text
