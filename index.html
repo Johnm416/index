@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gait Master Pro - BioMech Lab</title>
+    <style>
+        :root { --primary: #0984e3; --bg: #dfe6e9; --card: #ffffff; --text: #2d3436; --success: #00b894; --danger: #d63031; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .app-container { background: var(--card); padding: 25px; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); width: 100%; max-width: 650px; }
+        canvas { width: 100%; background: #fff; border-radius: 15px; border: 1px solid #eee; margin-top: 10px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .badge { background: #6c5ce7; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .phase-title { font-size: 22px; font-weight: 800; color: var(--primary); margin: 10px 0; text-align: center; }
+        .control-group { margin: 25px 0; }
+        input[type=range] { width: 100%; height: 8px; border-radius: 5px; background: #b2bec3; outline: none; -webkit-appearance: none; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: var(--primary); border-radius: 50%; border: 4px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        .mode-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; background: white; font-weight: bold; transition: 0.2s; }
+        .mode-btn.active { border-color: var(--primary); background: #e1f5fe; color: var(--primary); }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 20px; }
+        .stat-card { background: #f9f9f9; padding: 12px; border-radius: 12px; text-align: center; }
+        .val { display: block; font-size: 18px; font-weight: bold; }
+        .lbl { font-size: 10px; color: #636e72; text-transform: uppercase; letter-spacing: 1px; }
+        .muscle-map { margin-top: 20px; padding: 15px; background: #2d3436; border-radius: 15px; color: #dfe6e9; }
+        .chip { display: inline-block; padding: 4px 10px; margin: 3px; border-radius: 6px; font-size: 11px; background: #444; color: #888; transition: 0.3s; }
+        .chip.on { background: var(--success); color: white; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="header">
+        <span class="badge">V2.0 PATHOLOGY MODE</span>
+        <h1>Gait Cycle Tutor</h1>
+    </div>
+
+    <div class="mode-selector">
+        <button class="mode-btn active" onclick="setMode('normal')">Normal Gait</button>
+        <button class="mode-btn" onclick="setMode('trendelenburg')">Trendelenburg</button>
+    </div>
+
+    <div id="phase-label" class="phase-title">Initial Contact</div>
+    <canvas id="canvas" width="600" height="360"></canvas>
+
+    <div class="control-group">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold;">
+            <span>Cycle Progress</span>
+            <span id="pct-label">0%</span>
+        </div>
+        <input type="range" id="gaitSlider" min="0" max="99" value="0">
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card"><span class="lbl">Hip</span><span id="h-val" class="val">0°</span></div>
+        <div class="stat-card"><span class="lbl">Knee</span><span id="k-val" class="val">0°</span></div>
+        <div class="stat-card"><span class="lbl">Ankle</span><span id="a-val" class="val">0°</span></div>
+    </div>
+
+    <div class="muscle-map">
+        <div class="lbl" style="margin-bottom:8px;">Active Muscles (Leading Leg)</div>
+        <div id="muscle-list">
+            <span class="chip" id="q">Quadriceps</span>
+            <span class="chip" id="h">Hamstrings</span>
+            <span class="chip" id="g">Glute Max</span>
+            <span class="chip" id="t">Tibialis Ant</span>
+            <span class="chip" id="s">Calf (Gastroc)</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('gaitSlider');
+    let currentMode = 'normal';
+
+    const gaitData = [
+        {h: 20, k: 5, a: 0, name: "Initial Contact", muscles: ['q','t','g']},
+        {h: 20, k: 15, a: -5, name: "Loading Response", muscles: ['q','g']},
+        {h: 0, k: 5, a: 5, name: "Mid-Stance", muscles: ['s']},
+        {h: -15, k: 5, a: 10, name: "Terminal Stance", muscles: ['s']},
+        {h: -10, k: 40, a: -15, name: "Pre-Swing", muscles: ['s']},
+        {h: 15, k: 60, a: 0, name: "Initial Swing", muscles: ['t','h']},
+        {h: 25, k: 25, a: 0, name: "Mid-Swing", muscles: ['t']},
+        {h: 20, k: 5, a: 0, name: "Terminal Swing", muscles: ['q','t','h']}
+    ];
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        draw();
+    }
+
+    function interpolate(p) {
+        const idx = (p / 100) * (gaitData.length - 1);
+        const i = Math.floor(idx);
+        const t = idx - i;
+        const n = gaitData[i+1] || gaitData[0];
+        return {
+            h: gaitData[i].h + (n.h - gaitData[i].h) * t,
+            k: gaitData[i].k + (n.k - gaitData[i].k) * t,
+            a: gaitData[i].a + (n.a - gaitData[i].a) * t,
+            name: gaitData[i].name,
+            m: gaitData[i].muscles
+        };
+    }
+
+    function drawLimb(x, y, d, color, thick, isLeft) {
+        // Trendelenburg Logic: If mode is active and limb is in stance, drop the "pelvis"
+        let pelvicDrop = 0;
+        if(currentMode === 'trendelenburg' && !isLeft && d.h < 5) pelvicDrop = 15;
+
+        const hR = (90 + d.h) * Math.PI / 180;
+        const kR = (90 + d.h + d.k) * Math.PI / 180;
+        const aR = (d.h + d.k + d.a) * Math.PI / 180;
+
+        const kX = x + 70 * Math.cos(hR), kY = (y + pelvicDrop) + 70 * Math.sin(hR);
+        const aX = kX + 70 * Math.cos(kR), aY = kY + 70 * Math.sin(kR);
+        const tX = aX + 25 * Math.cos(aR);
+
+        ctx.strokeStyle = color; ctx.lineWidth = thick; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x, y + pelvicDrop); ctx.lineTo(kX, kY); ctx.lineTo(aX, aY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(tX, aY + 5); ctx.stroke();
+    }
+
+    function draw() {
+        const p = parseInt(slider.value);
+        const r = interpolate(p);
+        const l = interpolate((p + 50) % 100);
+
+        ctx.clearRect(0,0,600,360);
+        ctx.strokeStyle = "#eee"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0,320); ctx.lineTo(600,320); ctx.stroke();
+
+        // Torso
+        ctx.fillStyle = "#2d3436";
+        ctx.beginPath(); ctx.arc(300, 60, 18, 0, 7); ctx.fill();
+        ctx.fillRect(296, 80, 8, 70);
+
+        drawLimb(300, 150, l, "#b2bec3", 4, true);
+        drawLimb(300, 150, r, "#0984e3", 8, false);
+
+        document.getElementById('pct-label').innerText = p + "%";
+        document.getElementById('phase-label').innerText = r.name;
+        document.getElementById('h-val').innerText = Math.round(r.h) + "°";
+        document.getElementById('k-val').innerText = Math.round(r.k) + "°";
+        document.getElementById('a-val').innerText = Math.round(r.a) + "°";
+
+        document.querySelectorAll('.chip').forEach(c => c.className = r.m.includes(c.id) ? "chip on" : "chip");
+    }
+
+    slider.oninput = draw;
+    draw();
+</script>
+</body>
+</html>
