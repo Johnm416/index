@@ -6,20 +6,23 @@
     <title>3D Gait Visualizer - Subject 01</title>
     <style>
         body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background: #1e272e; color: white; overflow: hidden; }
+        #error-log { display: none; position: absolute; z-index: 999; background: rgba(255,0,0,0.8); color: white; padding: 20px; width: 100%; font-family: monospace; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         .ui-panel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 600px; background: rgba(30, 39, 46, 0.85); padding: 20px; border-radius: 15px; border: 1px solid #485460; backdrop-filter: blur(5px); }
         .header { text-align: center; margin-bottom: 15px; font-weight: bold; color: #0fbcf9; font-size: 20px; }
         input[type=range] { width: 100%; cursor: pointer; height: 6px; background: #485460; outline: none; border-radius: 5px; -webkit-appearance: none; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: #0fbcf9; border-radius: 50%; border: 3px solid white; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: #0fbcf9; border-radius: 50%; border: 3px solid white; }
         .stats { display: flex; justify-content: space-between; margin-top: 15px; font-size: 14px; text-align: center; }
-        .stat-box { flex: 1; }
-        .stat-val { font-size: 18px; font-weight: bold; color: #0fbcf9; }
-        .controls-hint { position: absolute; top: 20px; left: 20px; font-size: 12px; color: #808e9b; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; }
+        .stat-box { flex: 1; background: rgba(0,0,0,0.2); margin: 0 5px; padding: 10px; border-radius: 8px; }
+        .stat-val { font-size: 20px; font-weight: bold; color: #0fbcf9; margin-bottom: 5px; }
+        .controls-hint { position: absolute; top: 20px; left: 20px; font-size: 12px; color: #d2dae2; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; border: 1px solid #485460; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
+
+<div id="error-log"></div>
 
 <div class="controls-hint">
     🖱️ <b>Left Click + Drag:</b> Rotate Camera<br>
@@ -39,177 +42,120 @@
     <input type="range" id="scrubber" min="0" max="100" value="0">
 
     <div class="stats">
-        <div class="stat-box"><div id="h-val" class="stat-val">0°</div><div>Hip</div></div>
-        <div class="stat-card"><div id="k-val" class="stat-val">0°</div><div>Knee</div></div>
-        <div class="stat-card"><div id="a-val" class="stat-val">0°</div><div>Ankle</div></div>
+        <div class="stat-box"><div id="h-val" class="stat-val">0°</div><div>Hip Flexion</div></div>
+        <div class="stat-box"><div id="k-val" class="stat-val">0°</div><div>Knee Angle</div></div>
+        <div class="stat-box"><div id="a-val" class="stat-val">0°</div><div>Ankle Angle</div></div>
     </div>
 </div>
 
 <script>
-    // 1. DATA (From your normal.mot file)
-    const gaitData = [
-        {h: 24.6, k: -3.9, a: -1.7, name: "Initial Contact"},
-        {h: 20.2, k: -17.0, a: -0.8, name: "Loading Response"},
-        {h: 0.3, k: -6.6, a: 6.8, name: "Mid-Stance"},
-        {h: -11.9, k: -2.4, a: 10.2, name: "Terminal Stance"},
-        {h: -16.6, k: -8.2, a: 9.8, name: "Pre-Swing"},
-        {h: 4.9, k: -55.7, a: -10.2, name: "Initial Swing"},
-        {h: 21.8, k: -47.0, a: 1.4, name: "Mid-Swing"},
-        {h: 24.7, k: -2.4, a: -0.0, name: "Terminal Swing"}
-    ];
-
-    function interpolate(p) {
-        const idx = (p / 100) * (gaitData.length - 1);
-        const i = Math.floor(idx);
-        const t = idx - i;
-        const next = gaitData[i+1] || gaitData[0];
-        const lerp = (v1, v2) => v1 + (v2 - v1) * t;
-        return {
-            h: lerp(gaitData[i].h, next.h), k: lerp(gaitData[i].k, next.k),
-            a: lerp(gaitData[i].a, next.a), name: gaitData[i].name
-        };
-    }
-
-    // 2. SCENE SETUP
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1e272e);
-    scene.fog = new THREE.Fog(0x1e272e, 2, 10);
-
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(2, 1.5, 2.5);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    document.getElementById('canvas-container').appendChild(renderer.domElement);
-
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0.8, 0);
-    controls.update();
-
-    // Lights
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-    hemiLight.position.set(0, 2, 0);
-    scene.add(hemiLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(3, 5, 3);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
-
-    // Floor (Treadmill)
-    const gridHelper = new THREE.GridHelper(10, 20, 0x0fbcf9, 0x485460);
-    scene.add(gridHelper);
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshPhongMaterial({ color: 0x2d3436 }));
-    plane.rotation.x = -Math.PI / 2;
-    plane.receiveShadow = true;
-    scene.add(plane);
-
-    // 3. 3D BIOMECHANICAL SKELETON (gait2392 proportions)
-    const boneMaterialR = new THREE.MeshPhongMaterial({ color: 0x0fbcf9 }); // Right Leg Blue
-    const boneMaterialL = new THREE.MeshPhongMaterial({ color: 0x808e9b }); // Left Leg Grey
-    const jointMaterial = new THREE.MeshPhongMaterial({ color: 0xffdd59 });
-
-    function createBone(length, material) {
-        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, length, 16), material);
-        bone.position.y = -length / 2; // Pivot from top
-        bone.castShadow = true;
-        const group = new THREE.Group();
-        const joint = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), jointMaterial);
-        group.add(joint);
-        group.add(bone);
-        return group;
-    }
-
-    function createFoot(material) {
-        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), material);
-        foot.position.set(0, -0.02, 0.05); // Offset forward
-        foot.castShadow = true;
-        const group = new THREE.Group();
-        group.add(foot);
-        return group;
-    }
-
-    const femurLen = 0.40;
-    const tibiaLen = 0.43;
-
-    // Build Pelvis
-    const pelvis = new THREE.Group();
-    pelvis.position.y = 0.95; // Approx height
-    scene.add(pelvis);
-
-    // Build Right Leg
-    const rightHip = createBone(femurLen, boneMaterialR);
-    rightHip.position.x = 0.1; // Offset right
-    pelvis.add(rightHip);
-
-    const rightKnee = createBone(tibiaLen, boneMaterialR);
-    rightKnee.position.y = -femurLen;
-    rightHip.add(rightKnee);
-
-    const rightAnkle = createFoot(boneMaterialR);
-    rightAnkle.position.y = -tibiaLen;
-    rightKnee.add(rightAnkle);
-
-    // Build Left Leg
-    const leftHip = createBone(femurLen, boneMaterialL);
-    leftHip.position.x = -0.1; // Offset left
-    pelvis.add(leftHip);
-
-    const leftKnee = createBone(tibiaLen, boneMaterialL);
-    leftKnee.position.y = -femurLen;
-    leftHip.add(leftKnee);
-
-    const leftAnkle = createFoot(boneMaterialL);
-    leftAnkle.position.y = -tibiaLen;
-    leftKnee.add(leftAnkle);
-
-    // 4. ANIMATION LOGIC
-    const slider = document.getElementById('scrubber');
-    
-    function updatePose() {
-        const p = parseInt(slider.value);
-        const r = interpolate(p);
-        const l = interpolate((p + 50) % 100);
-
-        // Convert degrees to Radians and apply to X-axis rotation (Flexion/Extension)
-        const toRad = THREE.MathUtils.degToRad;
-
-        // Right Leg Kinematics
-        rightHip.rotation.x = toRad(r.h);
-        rightKnee.rotation.x = toRad(r.k);
-        rightAnkle.rotation.x = toRad(-r.a); // Inverse for Three.js orientation
-
-        // Left Leg Kinematics
-        leftHip.rotation.x = toRad(l.h);
-        leftKnee.rotation.x = toRad(l.k);
-        leftAnkle.rotation.x = toRad(-l.a);
-
-        // UI Updates
-        document.getElementById('pct-label').innerText = p + "%";
-        document.getElementById('phase-name').innerText = r.name;
-        document.getElementById('h-val').innerText = Math.round(r.h) + "°";
-        document.getElementById('k-val').innerText = Math.round(r.k) + "°";
-        document.getElementById('a-val').innerText = Math.round(r.a) + "°";
-    }
-
-    slider.addEventListener('input', updatePose);
-    updatePose(); // Init
-
-    // 5. RENDER LOOP
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    }
-    animate();
-
-    // Handle Window Resize
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+    window.addEventListener('error', function(e) {
+        document.getElementById('error-log').style.display = 'block';
+        document.getElementById('error-log').innerHTML += "ERROR: " + e.message + "<br>";
     });
-</script>
 
-</body>
-</html>
+    try {
+        const gaitData = [
+            {h: 24.6, k: -3.9, a: -1.7, name: "Initial Contact"},
+            {h: 20.2, k: -17.0, a: -0.8, name: "Loading Response"},
+            {h: 0.3, k: -6.6, a: 6.8, name: "Mid-Stance"},
+            {h: -11.9, k: -2.4, a: 10.2, name: "Terminal Stance"},
+            {h: -16.6, k: -8.2, a: 9.8, name: "Pre-Swing"},
+            {h: 4.9, k: -55.7, a: -10.2, name: "Initial Swing"},
+            {h: 21.8, k: -47.0, a: 1.4, name: "Mid-Swing"},
+            {h: 24.7, k: -2.4, a: -0.0, name: "Terminal Swing"}
+        ];
+
+        function interpolate(p) {
+            const idx = (p / 100) * (gaitData.length - 1);
+            const i = Math.floor(idx);
+            const t = idx - i;
+            const next = gaitData[i+1] || gaitData[0];
+            const lerp = (v1, v2) => v1 + (v2 - v1) * t;
+            return {
+                h: lerp(gaitData[i].h, next.h), k: lerp(gaitData[i].k, next.k),
+                a: lerp(gaitData[i].a, next.a), name: gaitData[i].name
+            };
+        }
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(1.5, 1.2, 2.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0.5, 0);
+        controls.update();
+
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
+        hemiLight.position.set(0, 2, 0);
+        scene.add(hemiLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(3, 5, 3);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const gridHelper = new THREE.GridHelper(10, 20, 0x0fbcf9, 0x485460);
+        scene.add(gridHelper);
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshPhongMaterial({ color: 0x2d3436 }));
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        const matRight = new THREE.MeshPhongMaterial({ color: 0x0fbcf9 }); 
+        const matLeft = new THREE.MeshPhongMaterial({ color: 0x808e9b });
+        const matJoint = new THREE.MeshPhongMaterial({ color: 0xf1c40f });
+
+        function createBone(length, material) {
+            const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, length, 16), material);
+            bone.position.y = -length / 2;
+            bone.castShadow = true;
+            const group = new THREE.Group();
+            const joint = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), matJoint);
+            group.add(joint);
+            group.add(bone);
+            return group;
+        }
+
+        function createFoot(material) {
+            const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), material);
+            foot.position.set(0, -0.02, 0.05); 
+            foot.castShadow = true;
+            const group = new THREE.Group();
+            group.add(foot);
+            return group;
+        }
+
+        const fLen = 0.40;
+        const tLen = 0.43;
+
+        const pelvis = new THREE.Group();
+        pelvis.position.y = 0.95; 
+        scene.add(pelvis);
+
+        const rHip = createBone(fLen, matRight);
+        rHip.position.x = 0.12; 
+        pelvis.add(rHip);
+
+        const rKnee = createBone(tLen, matRight);
+        rKnee.position.y = -fLen;
+        rHip.add(rKnee);
+
+        const rAnkle = createFoot(matRight);
+        rAnkle.position.y = -tLen;
+        rKnee.add(rAnkle);
+
+        const lHip = createBone(fLen, matLeft);
+        lHip.position.x = -0.12; 
+        pelvis.add(lHip);
+
+        const lKnee = createBone(tLen, matLeft);
+        lKnee.position.y = -fLen;
+        lHip.add(lKnee);
+
+        const lAn
