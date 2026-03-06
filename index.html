@@ -130,15 +130,25 @@
         }
 
         function createFoot(material) {
-            const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), material);
 
-    // FIX: Move foot forward relative to ankle
+            const foot = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08, 0.04, 0.18),
+            material
+            );
+
+    // Position foot so ankle sits near the heel
             foot.position.set(0, -0.02, 0.09);
 
+    // Rotate if needed to align with walking direction
+            foot.rotation.y = Math.PI; 
+
             foot.castShadow = true;
+
             const group = new THREE.Group();
             group.add(foot);
+
             return group;
+
 
         }
 
