@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSim Gait Lab - Subject Analysis</title>
+    <style>
+        :root { --primary: #2980b9; --bg: #ecf0f1; --card: #ffffff; --text: #2c3e50; --active: #27ae60; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .app-container { background: var(--card); padding: 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 650px; }
+        header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #eee; padding-bottom: 15px; }
+        .source-tag { font-size: 10px; background: #34495e; color: white; padding: 2px 8px; border-radius: 4px; vertical-align: middle; }
+        canvas { width: 100%; background: #fff; border-radius: 12px; border: 1px solid #ddd; }
+        .phase-display { font-size: 24px; font-weight: bold; color: var(--primary); text-align: center; margin: 15px 0; height: 35px; }
+        .slider-box { margin: 25px 0; background: #f8f9fa; padding: 15px; border-radius: 12px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .metric-card { background: #fdfdfd; padding: 12px; border-radius: 10px; text-align: center; border: 1px solid #eee; }
+        .metric-val { font-size: 20px; font-weight: 800; color: #2c3e50; }
+        .metric-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
+        .muscle-grid { margin-top: 25px; padding: 15px; background: #34495e; border-radius: 15px; }
+        .chip { display: inline-block; padding: 5px 12px; margin: 4px; border-radius: 8px; font-size: 11px; font-weight: 600; background: #2c3e50; color: #5d6d7e; transition: 0.2s; }
+        .chip.on { background: var(--active); color: white; transform: scale(1.05); box-shadow: 0 0 10px rgba(39, 174, 96, 0.4); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <h1>Gait Analysis Lab <span class="source-tag">DATA: normal.mot</span></h1>
+        <p>Real-time playback of OpenSim subject kinematics</p>
+    </header>
+
+    <div id="phase" class="phase-display">Initial Contact</div>
+    <canvas id="gaitCanvas" width="600" height="380"></canvas>
+
+    <div class="slider-box">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-weight:bold;">
+            <span>Gait Cycle Progression</span>
+            <span id="pct">0%</span>
+        </div>
+        <input type="range" id="scrubber" min="0" max="100" value="0">
+    </div>
+
+    <div class="metrics">
+        <div class="metric-card"><div class="metric-label">Hip Flexion</div><div id="h-v" class="metric-val">0°</div></div>
+        <div class="metric-card"><div class="metric-label">Knee Angle</div><div id="k-v" class="metric-val">0°</div></div>
+        <div class="metric-card"><div class="metric-label">Ankle Angle</div><div id="a-v" class="metric-val">0°</div></div>
+    </div>
+
+    <div class="muscle-grid">
+        <div class="metric-label" style="color:#bdc3c7; margin-bottom:10px;">Muscle Groups (Firing Order)</div>
+        <span class="chip" id="q">Quadriceps</span>
+        <span class="chip" id="h">Hamstrings</span>
+        <span class="chip" id="g">Gluteals</span>
+        <span class="chip" id="t">Tibialis Ant.</span>
+        <span class="chip" id="s">Gastroc/Soleus</span>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gaitCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('scrubber');
+
+    // EXTRAPOLATED DATA FROM YOUR NORMAL.MOT FILE
+    const rawGait = [
+        [24.61, -3.94, -1.7, "Initial Contact", ['q','t','g']], // 0%
+        [20.24, -17.04, -0.83, "Loading Response", ['q','g']], // 12%
+        [0.33, -6.59, 6.78, "Mid-Stance", ['s']],              // 30%
+        [-11.88, -2.44, 10.16, "Terminal Stance", ['s']],      // 45%
+        [-16.56, -8.2, 9.81, "Pre-Swing", ['s']],              // 55%
+        [4.93, -55.66, -10.16, "Initial Swing", ['h','t']],    // 70%
+        [21.76, -46.99, 1.44, "Mid-Swing", ['t']],             // 85%
+        [24.66, -2.35, -0.01, "Terminal Swing", ['h','q','t']] // 100%
+    ];
+
+    function getInterpolated(p) {
+        const idx = (p / 100) * (rawGait.length - 1);
+        const i = Math.floor(idx);
+        const t = idx - i;
+        const next = rawGait[i+1] || rawGait[0];
+        return {
+            h: rawGait[i][0] + (next[0] - rawGait[i][0]) * t,
+            k: rawGait[i][1] + (next[1] - rawGait[i][1]) * t,
+            a: rawGait[i][2] + (next[2] - rawGait[i][2]) * t,
+            name: rawGait[i][3],
+            m: rawGait[i][4]
+        };
+    }
+
+    function drawLeg(x, y, d, color, isMain) {
+        const femur = 85, tibia = 92, foot = 35; // Ratios from gait2392.osim
+        
+        const hRad = (90 + d.h) * Math.PI / 180;
+        const kRad = (90 + d.h + d.k) * Math.PI / 180;
+        const aRad = (d.h + d.k + d.a) * Math.PI / 180;
+
+        const kX = x + femur * Math.cos(hRad), kY = y + femur * Math.sin(hRad);
+        const aX = kX + tibia * Math.cos(kRad), aY = kY + tibia * Math.sin(kRad);
+        const tX = aX + foot * Math.cos(aRad);
+
+        ctx.strokeStyle = color; ctx.lineWidth = isMain ? 10 : 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(kX, kY); ctx.lineTo(aX, aY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(tX, aY + 5); ctx.stroke();
+    }
+
+    function update() {
+        const p = parseInt(slider.value);
+        const r = getInterpolated(p);
+        const l = getInterpolated((p + 50) % 100);
+
+        ctx.clearRect(0,0,600,380);
+        ctx.strokeStyle = "#eee"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0,340); ctx.lineTo(600,340); ctx.stroke();
+
+        ctx.fillStyle = "#34495e";
+        ctx.beginPath(); ctx.arc(300, 60, 20, 0, 7); ctx.fill(); // Head
+        ctx.fillRect(295, 80, 10, 80); // Torso
+
+        drawLeg(300, 160, l, "#bdc3c7", false);
+        drawLeg(300, 160, r, "#2980b9", true);
+
+        document.getElementById('pct').innerText = p + "%";
+        document.getElementById('phase').innerText = r.name;
+        document.getElementById('h-v').innerText = Math.round(r.h) + "°";
+        document.getElementById('k-v').innerText = Math.round(r.k) + "°";
+        document.getElementById('a-v').innerText = Math.round(r.a) + "°";
+
+        document.querySelectorAll('.chip').forEach(c => c.className = r.m.includes(c.id) ? "chip on" : "chip");
+    }
+
+    slider.oninput = update;
+    update();
+</script>
+
+</body>
+</html>
