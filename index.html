@@ -131,12 +131,15 @@
 
         function createFoot(material) {
             const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), material);
-            // CHANGED HERE: Flipped the Z position to -0.05 so the foot points forward relative to the leg's movement
-            foot.position.set(0, -0.02, -0.05); 
+
+    // FIX: Move foot forward relative to ankle
+            foot.position.set(0, -0.02, 0.09);
+
             foot.castShadow = true;
             const group = new THREE.Group();
             group.add(foot);
             return group;
+
         }
 
         const fLen = 0.40; // Femur
