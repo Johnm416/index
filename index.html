@@ -159,7 +159,7 @@
         rHip.add(rKnee);
 
         const rAnkle = createFoot(matRight);
-        rAnkle.position.y = -tLen;
+        rAnkle.position.y = tLen;
         rKnee.add(rAnkle);
 
         // Build Left Leg
@@ -172,7 +172,7 @@
         lHip.add(lKnee);
 
         const lAnkle = createFoot(matLeft);
-        lAnkle.position.y = -tLen;
+        lAnkle.position.y = tLen;
         lKnee.add(lAnkle);
 
         // 4. ANIMATION LOGIC
