@@ -36,17 +36,16 @@
     import * as THREE from 'https://cdn.skypack.dev/three@0.128.0/build/three.module.js';
     import { OrbitControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/OrbitControls.js';
 
-    // Remove loading text, show UI
     document.getElementById('loading').style.display = 'none';
     document.getElementById('ui-panel').style.display = 'block';
 
     // 1. DATA
     const gaitData = [
-        {h: 24.6, k: -3.9, a: -1.7, name: "Initial Contact (Heel Strike)"},
+        {h: 24.6, k: -3.9, a: -1.7, name: "Initial Contact"},
         {h: 20.2, k: -17.0, a: -0.8, name: "Loading Response"},
         {h: 0.3, k: -6.6, a: 6.8, name: "Mid-Stance"},
         {h: -11.9, k: -2.4, a: 10.2, name: "Terminal Stance"},
-        {h: -16.6, k: -8.2, a: 9.8, name: "Pre-Swing (Toe Off)"},
+        {h: -16.6, k: -8.2, a: 9.8, name: "Pre-Swing"},
         {h: 4.9, k: -55.7, a: -10.2, name: "Initial Swing"},
         {h: 21.8, k: -47.0, a: 1.4, name: "Mid-Swing"},
         {h: 24.7, k: -2.4, a: -0.0, name: "Terminal Swing"}
@@ -69,7 +68,6 @@
     // 2. SCENE
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-    // Position camera to look directly at the SIDE profile
     camera.position.set(0, 1.0, 3.5);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -80,20 +78,18 @@
     controls.target.set(0, 0.5, 0);
     controls.update();
 
-    // Bright Lighting so it is never invisible
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(2, 5, 5);
     scene.add(dirLight);
 
-    // Floor
     const grid = new THREE.GridHelper(10, 20, 0x0fbcf9, 0x485460);
     scene.add(grid);
 
     // 3. SKELETON BUILDER
-    const matR = new THREE.MeshStandardMaterial({ color: 0x0fbcf9 }); // Right Leg (Blue)
-    const matL = new THREE.MeshStandardMaterial({ color: 0x7f8c8d }); // Left Leg (Grey)
-    const matJoint = new THREE.MeshStandardMaterial({ color: 0xf1c40f }); // Joints (Yellow)
+    const matR = new THREE.MeshStandardMaterial({ color: 0x0fbcf9 }); 
+    const matL = new THREE.MeshStandardMaterial({ color: 0x7f8c8d }); 
+    const matJoint = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
 
     function createBone(len, mat) {
         const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, len, 16), mat);
@@ -105,8 +101,10 @@
     }
 
     function createFoot(mat) {
-        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.18), mat);
-        foot.position.set(0, -0.02, 0.05); // Pointing forward
+        // FIX: The box geometry is now Length(X), Height(Y), Width(Z) so it points forward
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.08), mat);
+        // FIX: Shifted the foot box forward along the X axis so the ankle joint sits at the back
+        foot.position.set(0.06, -0.02, 0); 
         const group = new THREE.Group();
         group.add(foot);
         return group;
@@ -114,17 +112,14 @@
 
     const fLen = 0.40, tLen = 0.43;
 
-    // Pelvis
     const pelvis = new THREE.Group();
     pelvis.position.y = 0.95;
     scene.add(pelvis);
 
-    // Right Leg
     const rHip = createBone(fLen, matR); rHip.position.z = 0.15; pelvis.add(rHip);
     const rKnee = createBone(tLen, matR); rKnee.position.y = -fLen; rHip.add(rKnee);
     const rAnkle = createFoot(matR); rAnkle.position.y = -tLen; rKnee.add(rAnkle);
 
-    // Left Leg
     const lHip = createBone(fLen, matL); lHip.position.z = -0.15; pelvis.add(lHip);
     const lKnee = createBone(tLen, matL); lKnee.position.y = -fLen; lHip.add(lKnee);
     const lAnkle = createFoot(matL); lAnkle.position.y = -tLen; lKnee.add(lAnkle);
@@ -139,14 +134,14 @@
 
         const rad = Math.PI / 180;
 
-        // FIXED AXES: Rotating on Z-axis makes them move exactly like a 2D side-profile
         rHip.rotation.z = r.h * rad;
         rKnee.rotation.z = r.k * rad;
-        rAnkle.rotation.z = -r.a * rad; // Ankle inverted to match foot geometry
+        // FIX: Removed the minus sign. Positive ankle angle = dorsiflexion (toes up)
+        rAnkle.rotation.z = r.a * rad; 
 
         lHip.rotation.z = l.h * rad;
         lKnee.rotation.z = l.k * rad;
-        lAnkle.rotation.z = -l.a * rad;
+        lAnkle.rotation.z = l.a * rad;
 
         document.getElementById('pct').innerText = p;
         document.getElementById('phase').innerText = r.name;
@@ -156,7 +151,7 @@
     }
 
     slider.addEventListener('input', update);
-    update(); // Initial frame
+    update(); 
 
     // 5. RENDER LOOP
     function animate() {
@@ -166,7 +161,6 @@
     }
     animate();
 
-    // Window Resize Handler
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
